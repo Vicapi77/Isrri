@@ -58,8 +58,42 @@
             Unlock: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>,
             LogOut: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>,
             Shield: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
-            CheckCircle: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            CheckCircle: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
+            Wrench: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>,
+            Camera: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>,
+            Image: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>,
+            Eye: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>,
+            Repeat: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
         };
+
+        // --- IMÁGENES: compresión en navegador y guardado como base64 directo en Firestore ---
+        const MAX_PHOTOS = 5;
+        const UNIT_STATUSES = [
+            { id: 'Pendiente', color: 'bg-slate-100 text-slate-600 border-slate-300', bar: 'bg-slate-400' },
+            { id: 'En diagnóstico', color: 'bg-blue-50 text-blue-700 border-blue-200', bar: 'bg-blue-500' },
+            { id: 'En reparación', color: 'bg-amber-50 text-amber-700 border-amber-200', bar: 'bg-amber-500' },
+            { id: 'Esperando refacciones', color: 'bg-orange-50 text-orange-700 border-orange-200', bar: 'bg-orange-500' },
+            { id: 'Terminada', color: 'bg-emerald-50 text-emerald-700 border-emerald-200', bar: 'bg-emerald-500' }
+        ];
+        const statusInfo = (s) => UNIT_STATUSES.find(x => x.id === s) || UNIT_STATUSES[0];
+
+        const compressImage = (file, maxSize, quality) => new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+                    const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+                    const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+                    const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.drawImage(img, 0, 0, w, h);
+                    let q = quality; let out = canvas.toDataURL('image/jpeg', q);
+                    while (out.length > 850000 && q > 0.3) { q -= 0.1; out = canvas.toDataURL('image/jpeg', q); } // límite doc Firestore 1MB
+                    resolve(out);
+                };
+                img.onerror = reject; img.src = e.target.result;
+            };
+            reader.onerror = reject; reader.readAsDataURL(file);
+        });
 
         // --- FIREBASE SETUP ---
         const firebaseConfig = {
@@ -223,8 +257,32 @@
                 if (!db) return;
                 const u1 = db.collection("incidents").onSnapshot(s => { setIncidents(s.docs.map(d => ({ id: d.id, ...d.data() }))); setIsLoading(false); });
                 const u2 = db.collection("complaints").onSnapshot(s => { setComplaints(s.docs.map(d => ({ id: d.id, ...d.data() }))); });
-                return () => { u1(); u2(); };
+                const u3 = db.collection("repair_units").onSnapshot(s => { setUnits(s.docs.map(d => ({ id: d.id, ...d.data() }))); });
+                return () => { u1(); u2(); u3(); };
             }, []);
+
+            // --- UNIDADES EN REPARACIÓN ---
+            const [units, setUnits] = useState([]);
+            const [unitModal, setUnitModal] = useState(null); // { item, readOnly }
+            const [unitFilter, setUnitFilter] = useState('Todas');
+            const [unitSearch, setUnitSearch] = useState('');
+
+            const filteredUnits = useMemo(() => {
+                const q = unitSearch.trim().toLowerCase();
+                return units
+                    .filter(u => unitFilter === 'Todas' || u.status === unitFilter)
+                    .filter(u => !q || [u.unit, u.issue, u.notes].some(v => (v || '').toLowerCase().includes(q)))
+                    .sort((a, b) => (a.status === 'Terminada') - (b.status === 'Terminada') || (b.updatedAt || 0) - (a.updatedAt || 0));
+            }, [units, unitFilter, unitSearch]);
+
+            const deleteUnit = async (u) => {
+                if (!confirm(`¿Eliminar la unidad ${u.unit} y sus imágenes permanentemente?`)) return;
+                const batch = db.batch();
+                for (let i = 0; i < MAX_PHOTOS; i++) batch.delete(db.collection("repair_unit_photos").doc(`${u.id}_${i}`));
+                batch.delete(db.collection("repair_units").doc(u.id));
+                await batch.commit();
+                showNotification('success', 'Unidad eliminada');
+            };
 
             const showNotification = (type, message) => { setNotification({ type, message }); setTimeout(() => setNotification(null), 3000); };
 
@@ -543,16 +601,17 @@
                             
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                 <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                                    <div className="p-4 bg-slate-50 font-bold border-b flex justify-between"><span className="flex gap-2 items-center"><span className="text-purple-500"><Icons.MessageSquare /></span> Quejas</span> <span className="text-xs bg-purple-100 px-2 py-1 rounded-full">{dashboardData.current.complaints ? dashboardData.current.complaints.length : 0}</span></div>
+                                    <div className="p-4 bg-slate-50 font-bold border-b flex justify-between"><span className="flex gap-2 items-center"><span className="text-purple-500"><Icons.MessageSquare /></span> Quejas</span> <span className="flex gap-2 items-center">{(() => { const r = (dashboardData.current.complaints || []).filter(c => c.recurrent === 'Sí').length; return r > 0 ? <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full flex items-center gap-1"><Icons.Repeat /> {r} reincidente{r !== 1 ? 's' : ''}</span> : null; })()}<span className="text-xs bg-purple-100 px-2 py-1 rounded-full">{dashboardData.current.complaints ? dashboardData.current.complaints.length : 0}</span></span></div>
                                     <div className="max-h-60 overflow-y-auto">
                                         <table className="w-full text-sm text-left">
-                                            <thead className="sticky top-0 bg-slate-50 text-slate-500"><tr><th className="p-3">Fecha</th><th className="p-3">Ruta</th><th className="p-3">Motivo / Detalle</th><th className="p-3">Acción</th>{isAdmin && <th></th>}</tr></thead>
+                                            <thead className="sticky top-0 bg-slate-50 text-slate-500"><tr><th className="p-3">Fecha</th><th className="p-3">Ruta</th><th className="p-3">Motivo / Detalle</th><th className="p-3 text-center">Reincidente</th><th className="p-3">Acción</th>{isAdmin && <th></th>}</tr></thead>
                                             <tbody className="divide-y">
                                                 {dashboardData.current.complaints && dashboardData.current.complaints.map(c => (
                                                     <tr key={c.id}>
                                                         <td className="p-3 text-slate-500 align-top">{c.date.slice(0,5)}</td>
                                                         <td className="p-3 align-top font-medium">{c.route}</td>
                                                         <td className="p-3 align-top"><div className="text-slate-800 font-bold">{c.issue}</div><div className="text-xs text-slate-500 mt-1 italic">"{c.detail}"</div></td>
+                                                        <td className="p-3 align-top text-center">{c.recurrent === 'Sí' ? <span className="inline-flex items-center gap-1 text-xs font-bold bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full"><Icons.Repeat /> Sí</span> : <span className="text-xs text-slate-400">No</span>}</td>
                                                         <td className="p-3 align-top text-xs"><span className="bg-slate-100 px-2 py-1 rounded border border-slate-200">{c.action || '-'}</span></td>
                                                         {isAdmin && <td className="p-3 align-top text-right min-w-[80px]">
                                                             <button onClick={() => handleEdit(c, 'complaint')} className="text-blue-400 hover:text-blue-600 mr-2" title="Editar"><Icons.Edit /></button>
@@ -566,6 +625,67 @@
                                 </div>
                                 <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col justify-center">
                                     <SimpleDonutChart title="Motivos de Quejas" total={dashboardData.current.totalComplaints || 0} data={dashboardData.complaintReasons} />
+                                </div>
+                            </div>
+
+                            {/* UNIDADES EN REPARACIÓN */}
+                            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                <div className="p-4 bg-slate-50 border-b flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                    <div className="font-bold flex gap-2 items-center"><span className="text-amber-500"><Icons.Wrench /></span> Unidades en Reparación <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full">{units.length}</span></div>
+                                    <div className="flex flex-wrap gap-2 items-center">
+                                        <input value={unitSearch} onChange={e => setUnitSearch(e.target.value)} placeholder="Buscar unidad / falla..." className="border rounded px-2 py-1 text-sm w-44" />
+                                        <select value={unitFilter} onChange={e => setUnitFilter(e.target.value)} className="border rounded px-2 py-1 text-sm">
+                                            <option>Todas</option>{UNIT_STATUSES.map(s => <option key={s.id}>{s.id}</option>)}
+                                        </select>
+                                        {isAdmin && <button onClick={() => setUnitModal({ item: null, readOnly: false })} className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1 rounded text-sm flex items-center gap-1"><Icons.Plus /> Agregar unidad</button>}
+                                    </div>
+                                </div>
+                                <div className="px-4 pt-4 flex flex-wrap gap-2">
+                                    {UNIT_STATUSES.map(s => { const n = units.filter(u => u.status === s.id).length; return (
+                                        <button key={s.id} onClick={() => setUnitFilter(unitFilter === s.id ? 'Todas' : s.id)} className={`text-xs border px-2 py-1 rounded-full font-medium ${s.color} ${unitFilter === s.id ? 'ring-2 ring-offset-1 ring-slate-400' : ''}`}>{s.id}: <b>{n}</b></button>
+                                    ); })}
+                                </div>
+                                <div className="p-4">
+                                    {filteredUnits.length === 0 ? (
+                                        <div className="text-center text-slate-400 text-sm py-8">{units.length === 0 ? (isAdmin ? 'No hay unidades registradas. Usa "Agregar unidad".' : 'No hay unidades registradas.') : 'Sin resultados con este filtro.'}</div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {filteredUnits.map(u => {
+                                                const st = statusInfo(u.status); const thumbs = u.thumbs || []; const nPh = thumbs.filter(Boolean).length; const prog = Math.max(0, Math.min(100, parseInt(u.progress) || 0));
+                                                return (
+                                                    <div key={u.id} className="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow flex flex-col gap-3">
+                                                        <div className="flex justify-between items-start gap-2">
+                                                            <div className="min-w-0">
+                                                                <div className="text-lg font-bold text-slate-800">Unidad {u.unit}</div>
+                                                                <div className="text-xs text-slate-500 truncate" title={u.issue}>{u.issue || 'Sin descripción'}</div>
+                                                            </div>
+                                                            <span className={`text-[11px] border px-2 py-0.5 rounded-full font-bold whitespace-nowrap ${st.color}`}>{u.status || 'Pendiente'}</span>
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex justify-between text-xs mb-1"><span className="text-slate-500">Avance de reparación</span><span className="font-bold text-slate-700">{prog}%</span></div>
+                                                            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden"><div className={`h-full ${st.bar}`} style={{ width: `${prog}%` }}></div></div>
+                                                        </div>
+                                                        <div className="flex gap-1">
+                                                            {Array.from({ length: MAX_PHOTOS }).map((_, i) => thumbs[i]
+                                                                ? <img key={i} src={thumbs[i]} className="w-1/5 aspect-square object-cover rounded border border-slate-200 cursor-pointer" onClick={() => setUnitModal({ item: u, readOnly: !isAdmin, openSlot: i })} />
+                                                                : <div key={i} className="w-1/5 aspect-square rounded border border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-slate-300"><Icons.Image /></div>)}
+                                                        </div>
+                                                        <div className="flex justify-between items-center text-xs text-slate-400">
+                                                            <span>{u.entryDate ? `Ingreso: ${u.entryDate.split('-').reverse().join('/')}` : ''}{u.etaDate ? ` · Est.: ${u.etaDate.split('-').reverse().join('/')}` : ''}</span>
+                                                            <span>{nPh}/{MAX_PHOTOS} fotos</span>
+                                                        </div>
+                                                        <div className="flex justify-end gap-2 border-t pt-2">
+                                                            <button onClick={() => setUnitModal({ item: u, readOnly: true })} className="text-slate-500 hover:text-slate-800 text-xs flex items-center gap-1"><Icons.Eye /> Ver</button>
+                                                            {isAdmin && <>
+                                                                <button onClick={() => setUnitModal({ item: u, readOnly: false })} className="text-blue-500 hover:text-blue-700 text-xs flex items-center gap-1"><Icons.Edit /> Editar</button>
+                                                                <button onClick={() => deleteUnit(u)} className="text-red-400 hover:text-red-600 text-xs flex items-center gap-1"><span className="scale-75"><Icons.Trash2 /></span> Eliminar</button>
+                                                            </>}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -615,6 +735,16 @@
 
                         </div>
                     </main>
+
+                    {unitModal && (
+                        <UnitModal
+                            item={unitModal.item}
+                            readOnly={unitModal.readOnly}
+                            openSlot={unitModal.openSlot}
+                            close={() => setUnitModal(null)}
+                            notify={showNotification}
+                        />
+                    )}
 
                     {/* MODAL FORM */}
                     {isModalOpen && (
@@ -716,7 +846,8 @@
                 detail: initialData?.detail || '', 
                 action: initialData?.action || '', 
                 source: initialData?.source || 'Laborales', 
-                type: initialData?.type || 'Servicio' 
+                type: initialData?.type || 'Servicio',
+                recurrent: initialData?.recurrent || 'No'
             });
 
             const handleChange = (e) => setFormData(p => ({ ...p, [e.target.name]: e.target.value }));
@@ -793,6 +924,15 @@
                                         </select>
                                         <select name="source" value={formData.source} onChange={handleChange} className="w-full border rounded p-2 text-sm"><option>Laborales</option><option>Sindicato</option></select>
                                     </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 mb-1 block">¿Es reincidente?</label>
+                                        <div className="flex gap-2">
+                                            {['No', 'Sí'].map(opt => (
+                                                <button type="button" key={opt} onClick={() => setFormData(p => ({ ...p, recurrent: opt }))}
+                                                    className={`flex-1 py-2 rounded border text-sm font-bold ${formData.recurrent === opt ? (opt === 'Sí' ? 'bg-red-600 text-white border-red-600' : 'bg-slate-800 text-white border-slate-800') : 'bg-white text-slate-500 hover:bg-slate-50'}`}>{opt}</button>
+                                            ))}
+                                        </div>
+                                    </div>
                                     <div><label className="text-xs font-bold text-slate-500">Acción Tomada</label><input type="text" name="action" placeholder="Ej. Acta administrativa, Compromiso..." value={formData.action} onChange={handleChange} className="w-full border rounded p-2 text-sm"/></div>
                                     <textarea name="detail" placeholder="Detalle de la queja..." rows="3" value={formData.detail} onChange={handleChange} className="w-full border rounded p-2 text-sm"></textarea>
                                 </>
@@ -803,6 +943,160 @@
                             <div className="flex gap-2"><button onClick={close} className="px-4 py-2 rounded text-sm hover:bg-slate-200">Cancelar</button><button type="submit" form="f" className="px-4 py-2 rounded text-sm bg-rose-600 text-white hover:bg-rose-700 shadow">{initialData ? 'Actualizar' : 'Guardar'}</button></div>
                         </div>
                     </div>
+                </div>
+            );
+        };
+
+        // --- MODAL UNIDAD EN REPARACIÓN ---
+        const UnitModal = ({ item, readOnly, openSlot, close, notify }) => {
+            const { useRef } = React;
+            const isNew = !item;
+            const [form, setForm] = useState({
+                unit: item?.unit || '', issue: item?.issue || '', status: item?.status || 'Pendiente',
+                progress: item?.progress ?? 0, entryDate: item?.entryDate || new Date().toISOString().split('T')[0],
+                etaDate: item?.etaDate || '', notes: item?.notes || ''
+            });
+            // photos[i] = { full, thumb, dirty }
+            const [photos, setPhotos] = useState(Array.from({ length: MAX_PHOTOS }, (_, i) => ({ full: null, thumb: item?.thumbs?.[i] || null, dirty: false })));
+            const [loadingPhotos, setLoadingPhotos] = useState(!!item);
+            const [busySlot, setBusySlot] = useState(null);
+            const [menuSlot, setMenuSlot] = useState(null);
+            const [viewSlot, setViewSlot] = useState(null);
+            const [saving, setSaving] = useState(false);
+            const galleryRef = useRef(null); const cameraRef = useRef(null); const targetSlot = useRef(null);
+
+            useEffect(() => {
+                if (!item) return;
+                Promise.all(Array.from({ length: MAX_PHOTOS }, (_, i) => db.collection("repair_unit_photos").doc(`${item.id}_${i}`).get()))
+                    .then(snaps => {
+                        setPhotos(prev => prev.map((p, i) => snaps[i].exists ? { ...p, full: snaps[i].data().data } : p));
+                        setLoadingPhotos(false);
+                        if (openSlot !== undefined && snaps[openSlot]?.exists) setViewSlot(openSlot);
+                    }).catch(() => setLoadingPhotos(false));
+            }, []);
+
+            const ch = (e) => setForm(p => ({ ...p, [e.target.name]: e.target.value }));
+            const setStatus = (s) => setForm(p => ({ ...p, status: s, progress: s === 'Terminada' ? 100 : p.progress }));
+
+            const pick = (slot, mode) => { targetSlot.current = slot; setMenuSlot(null); (mode === 'camera' ? cameraRef : galleryRef).current.click(); };
+            const onFile = async (e) => {
+                const file = e.target.files && e.target.files[0]; e.target.value = '';
+                const slot = targetSlot.current; if (!file || slot === null) return;
+                setBusySlot(slot);
+                try {
+                    const full = await compressImage(file, 1280, 0.7);
+                    const thumb = await compressImage(file, 220, 0.6);
+                    setPhotos(prev => prev.map((p, i) => i === slot ? { full, thumb, dirty: true } : p));
+                } catch (err) { notify('error', 'No se pudo procesar la imagen'); }
+                setBusySlot(null);
+            };
+            const removePhoto = (slot) => { if (!confirm('¿Borrar esta imagen?')) return; setPhotos(prev => prev.map((p, i) => i === slot ? { full: null, thumb: null, dirty: true } : p)); setMenuSlot(null); };
+
+            const save = async () => {
+                if (!form.unit.trim()) { notify('error', 'Captura el número de unidad'); return; }
+                setSaving(true);
+                try {
+                    const ref = isNew ? db.collection("repair_units").doc() : db.collection("repair_units").doc(item.id);
+                    const payload = { ...form, unit: form.unit.trim(), progress: Math.max(0, Math.min(100, parseInt(form.progress) || 0)), thumbs: photos.map(p => p.thumb || null), updatedAt: Date.now() };
+                    if (isNew) payload.createdAt = Date.now();
+                    await ref.set(payload, { merge: true });
+                    await Promise.all(photos.map((p, i) => {
+                        if (!p.dirty) return null;
+                        const pRef = db.collection("repair_unit_photos").doc(`${ref.id}_${i}`);
+                        return p.full ? pRef.set({ unitId: ref.id, slot: i, data: p.full, updatedAt: Date.now() }) : pRef.delete();
+                    }));
+                    notify('success', isNew ? 'Unidad agregada' : 'Unidad actualizada');
+                    close();
+                } catch (err) { console.error(err); notify('error', 'Error al guardar: ' + err.message); setSaving(false); }
+            };
+
+            const filled = photos.filter(p => p.thumb || p.full).length;
+            const prog = Math.max(0, Math.min(100, parseInt(form.progress) || 0));
+            const st = statusInfo(form.status);
+
+            return (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[95vh] fade-in">
+                        <div className="bg-slate-900 p-4 flex justify-between text-white rounded-t-2xl">
+                            <h2 className="font-bold flex gap-2 items-center"><Icons.Wrench /> {readOnly ? `Unidad ${form.unit}` : isNew ? 'Agregar Unidad' : `Editar Unidad ${item.unit}`}</h2>
+                            <button onClick={close}><Icons.X /></button>
+                        </div>
+                        <div className="p-6 overflow-y-auto space-y-5">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div><label className="text-xs font-bold text-slate-500">No. Unidad</label><input name="unit" value={form.unit} onChange={ch} disabled={readOnly} className="w-full border rounded p-2 text-sm font-bold disabled:bg-slate-50" placeholder="Ej. 1045" /></div>
+                                <div><label className="text-xs font-bold text-slate-500">Fecha ingreso</label><input type="date" name="entryDate" value={form.entryDate} onChange={ch} disabled={readOnly} className="w-full border rounded p-2 text-sm disabled:bg-slate-50" /></div>
+                                <div><label className="text-xs font-bold text-slate-500">Fecha estimada salida</label><input type="date" name="etaDate" value={form.etaDate} onChange={ch} disabled={readOnly} className="w-full border rounded p-2 text-sm disabled:bg-slate-50" /></div>
+                            </div>
+                            <div><label className="text-xs font-bold text-slate-500">Falla / Motivo de reparación</label><input name="issue" value={form.issue} onChange={ch} disabled={readOnly} className="w-full border rounded p-2 text-sm disabled:bg-slate-50" placeholder="Ej. Falla en sistema de frenos" /></div>
+
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 mb-1 block">Estatus</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {UNIT_STATUSES.map(s => (
+                                        <button type="button" key={s.id} disabled={readOnly} onClick={() => setStatus(s.id)}
+                                            className={`text-xs border px-3 py-1.5 rounded-full font-bold ${form.status === s.id ? s.color + ' ring-2 ring-offset-1 ring-slate-400' : 'bg-white text-slate-400 border-slate-200'} ${readOnly ? 'cursor-default' : ''}`}>{s.id}</button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="flex justify-between text-xs mb-1"><label className="font-bold text-slate-500">Avance de reparación</label><span className="font-bold text-slate-700">{prog}%</span></div>
+                                {readOnly
+                                    ? <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div className={`h-full ${st.bar}`} style={{ width: `${prog}%` }}></div></div>
+                                    : <input type="range" min="0" max="100" step="5" name="progress" value={prog} onChange={ch} className="w-full accent-rose-600" />}
+                            </div>
+
+                            <div><label className="text-xs font-bold text-slate-500">Notas / Detalle del avance</label><textarea name="notes" rows="3" value={form.notes} onChange={ch} disabled={readOnly} className="w-full border rounded p-2 text-sm disabled:bg-slate-50" placeholder="Ej. Se cambiaron balatas, pendiente revisión de rotores..."></textarea></div>
+
+                            <div>
+                                <div className="flex justify-between items-center mb-2"><label className="text-xs font-bold text-slate-500">Imágenes</label><span className="text-xs text-slate-400">{filled}/{MAX_PHOTOS} {loadingPhotos && <span className="loader ml-1" style={{ width: 12, height: 12 }}></span>}</span></div>
+                                <div className="grid grid-cols-5 gap-2">
+                                    {photos.map((p, i) => {
+                                        const src = p.thumb || p.full;
+                                        return (
+                                            <div key={i} className="relative">
+                                                <button type="button"
+                                                    onClick={() => { if (busySlot !== null) return; if (src) { readOnly ? setViewSlot(i) : setMenuSlot(menuSlot === i ? null : i); } else if (!readOnly) setMenuSlot(menuSlot === i ? null : i); }}
+                                                    className={`w-full aspect-square rounded-lg border-2 overflow-hidden flex items-center justify-center ${src ? 'border-slate-200' : 'border-dashed border-slate-300 bg-slate-50 text-slate-400'} ${readOnly && !src ? 'cursor-default' : 'hover:border-rose-400'}`}>
+                                                    {busySlot === i ? <span className="loader"></span> : src ? <img src={src} className="w-full h-full object-cover" /> : <div className="flex flex-col items-center text-[10px]">{readOnly ? <Icons.Image /> : <><Icons.Plus /><span>Foto {i + 1}</span></>}</div>}
+                                                </button>
+                                                {menuSlot === i && !readOnly && (
+                                                    <div className="absolute z-20 top-full mt-1 left-1/2 -translate-x-1/2 bg-white border rounded-lg shadow-xl text-xs w-36 overflow-hidden fade-in">
+                                                        {src && <button type="button" onClick={() => { setViewSlot(i); setMenuSlot(null); }} className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2"><Icons.Eye /> Ver</button>}
+                                                        <button type="button" onClick={() => pick(i, 'gallery')} className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2"><Icons.Image /> {src ? 'Cambiar (galería)' : 'Galería'}</button>
+                                                        <button type="button" onClick={() => pick(i, 'camera')} className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2"><Icons.Camera /> {src ? 'Cambiar (cámara)' : 'Tomar foto'}</button>
+                                                        {src && <button type="button" onClick={() => removePhoto(i)} className="w-full px-3 py-2 text-left hover:bg-red-50 text-red-600 flex items-center gap-2 border-t"><span className="scale-75"><Icons.Trash2 /></span> Borrar</button>}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <input ref={galleryRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
+                                <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onFile} />
+                            </div>
+                        </div>
+                        <div className="p-4 border-t bg-slate-50 flex justify-end gap-2 rounded-b-2xl">
+                            <button onClick={close} className="px-4 py-2 rounded text-sm hover:bg-slate-200">{readOnly ? 'Cerrar' : 'Cancelar'}</button>
+                            {!readOnly && <button onClick={save} disabled={saving || busySlot !== null} className="px-4 py-2 rounded text-sm bg-rose-600 text-white hover:bg-rose-700 shadow disabled:opacity-50 flex items-center gap-2">{saving && <span className="loader" style={{ width: 14, height: 14, borderTopColor: '#fff' }}></span>}{isNew ? 'Guardar' : 'Actualizar'}</button>}
+                        </div>
+                    </div>
+
+                    {viewSlot !== null && (
+                        <div className="fixed inset-0 bg-black/90 z-[60] flex flex-col items-center justify-center p-4" onClick={() => setViewSlot(null)}>
+                            <button className="absolute top-4 right-4 text-white"><Icons.X /></button>
+                            {photos[viewSlot].full || photos[viewSlot].thumb
+                                ? <img src={photos[viewSlot].full || photos[viewSlot].thumb} className="max-w-full max-h-[85vh] rounded shadow-2xl" onClick={e => e.stopPropagation()} />
+                                : <span className="loader"></span>}
+                            <div className="flex gap-4 mt-4 text-white text-sm items-center" onClick={e => e.stopPropagation()}>
+                                {(() => { const idxs = photos.map((p, i) => (p.thumb || p.full) ? i : -1).filter(i => i >= 0); const pos = idxs.indexOf(viewSlot); return <>
+                                    <button disabled={pos <= 0} onClick={() => setViewSlot(idxs[pos - 1])} className="px-3 py-1 rounded bg-white/10 disabled:opacity-30">‹ Anterior</button>
+                                    <span>Foto {viewSlot + 1}</span>
+                                    <button disabled={pos >= idxs.length - 1} onClick={() => setViewSlot(idxs[pos + 1])} className="px-3 py-1 rounded bg-white/10 disabled:opacity-30">Siguiente ›</button>
+                                </>; })()}
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         };
