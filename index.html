@@ -234,6 +234,7 @@
         const TransportationDashboard = () => {
             const [incidents, setIncidents] = useState([]);
             const [complaints, setComplaints] = useState([]);
+            const [dailyKpis, setDailyKpis] = useState([]);
             const [isLoading, setIsLoading] = useState(true);
             const [selectedWeek, setSelectedWeek] = useState('S50-25');
             const [selectedPlant, setSelectedPlant] = useState('Todas');
@@ -258,7 +259,8 @@
                 const u1 = db.collection("incidents").onSnapshot(s => { setIncidents(s.docs.map(d => ({ id: d.id, ...d.data() }))); setIsLoading(false); });
                 const u2 = db.collection("complaints").onSnapshot(s => { setComplaints(s.docs.map(d => ({ id: d.id, ...d.data() }))); });
                 const u3 = db.collection("repair_units").onSnapshot(s => { setUnits(s.docs.map(d => ({ id: d.id, ...d.data() }))); });
-                return () => { u1(); u2(); u3(); };
+                const u4 = db.collection("daily_kpis").onSnapshot(s => { setDailyKpis(s.docs.map(d => ({ id: d.id, ...d.data() }))); });
+                return () => { u1(); u2(); u3(); u4(); };
             }, []);
 
             // --- UNIDADES EN REPARACIÓN ---
@@ -293,6 +295,22 @@
                 } else { setLoginError(true); }
             };
 
+            // --- INDICADORES DIARIOS (NS / Seguridad / Inicios a tiempo) ---
+            const avg1 = (arr) => parseFloat((arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(1));
+            const dayKpi = (d) => {
+                const ks = dailyKpis.filter(k => k.date === d && (selectedPlant === 'Todas' || k.plant === selectedPlant));
+                if (ks.length) return { serviceLevel: avg1(ks.map(k => k.serviceLevel ?? 100)), safetyScore: avg1(ks.map(k => k.safetyScore ?? 100)), onTimeStarts: avg1(ks.map(k => k.onTimeStarts ?? 100)) };
+                // Respaldo: registros anteriores que traían el indicador dentro de cada reporte
+                const inc = incidents.filter(i => i.date === d && (selectedPlant === 'Todas' || i.plant === selectedPlant) && i.serviceLevel !== undefined);
+                if (inc.length) return { serviceLevel: avg1(inc.map(i => i.serviceLevel)), safetyScore: avg1(inc.map(i => i.safetyScore ?? 100)), onTimeStarts: avg1(inc.map(i => i.onTimeStarts ?? 100)) };
+                return null;
+            };
+            const periodKpi = (dates) => {
+                const vals = dates.map(dayKpi).filter(Boolean);
+                if (!vals.length) return { serviceLevel: 100, safetyScore: 100, onTimeStarts: 100 };
+                return { serviceLevel: avg1(vals.map(v => v.serviceLevel)), safetyScore: avg1(vals.map(v => v.safetyScore)), onTimeStarts: avg1(vals.map(v => v.onTimeStarts)) };
+            };
+
             const calculateWeekStats = (weekKey) => {
                 const w = WEEKS_DEF[weekKey]; if (!w) return null;
                 const fInc = incidents.filter(i => w.dates.includes(i.date) && (selectedPlant === 'Todas' || i.plant === selectedPlant));
@@ -313,9 +331,7 @@
 
                 return {
                     weekLabel: w.label, totalImp: aggs.imp, totalNoImp: aggs.noImp, lateStarts: aggs.lateStarts, lateStartsNoAff: aggs.lateStartsNoAff, lateStartsAff: aggs.lateStarts, accidents: aggs.accidents, 
-                    serviceLevel: fInc.length > 0 ? parseFloat((aggs.slSum / fInc.length).toFixed(1)) : 100,
-                    safetyScore: fInc.length > 0 ? parseFloat((aggs.safetySum / fInc.length).toFixed(1)) : 100,
-                    onTimeStarts: fInc.length > 0 ? parseFloat((aggs.onTimeSum / fInc.length).toFixed(1)) : 100, 
+                    ...periodKpi(w.dates),
                     totalComplaints: fCom.length, incidents: fInc, complaints: fCom, dates: w.dates, aggs
                 };
             };
@@ -337,9 +353,7 @@
                 });
                 return {
                     monthLabel: mo.label, totalImp: aggs.imp, totalNoImp: aggs.noImp, lateStarts: aggs.lateStarts, lateStartsNoAff: aggs.lateStartsNoAff, lateStartsAff: aggs.lateStarts, accidents: aggs.accidents,
-                    serviceLevel: fInc.length > 0 ? parseFloat((aggs.slSum / fInc.length).toFixed(1)) : 100,
-                    safetyScore: fInc.length > 0 ? parseFloat((aggs.safetySum / fInc.length).toFixed(1)) : 100,
-                    onTimeStarts: fInc.length > 0 ? parseFloat((aggs.onTimeSum / fInc.length).toFixed(1)) : 100,
+                    ...periodKpi(mo.dates),
                     totalComplaints: fCom.length, incidents: fInc, complaints: fCom, dates: mo.dates, weekKeys: mo.weekKeys, aggs,
                     causes: {
                         imp: [
@@ -405,9 +419,7 @@
                         lateStarts: dayInc.reduce((s, i) => s + (i.lateStarts || 0), 0),
                         lateStartsNoAff: dayInc.reduce((s, i) => s + (i.lateStartsNoAff || 0), 0),
                         accidents: dayInc.reduce((s, i) => s + (i.accidents || 0), 0),
-                        serviceLevel: dayInc.length > 0 ? parseFloat((dayInc.reduce((s, i) => s + i.serviceLevel, 0) / dayInc.length).toFixed(1)) : 100,
-                        safetyScore: dayInc.length > 0 ? parseFloat((dayInc.reduce((s, i) => s + (i.safetyScore || 100), 0) / dayInc.length).toFixed(1)) : 100,
-                        onTimeStarts: dayInc.length > 0 ? parseFloat((dayInc.reduce((s, i) => s + (i.onTimeStarts !== undefined ? i.onTimeStarts : 100), 0) / dayInc.length).toFixed(1)) : 100
+                        ...(dayKpi(d) || { serviceLevel: 100, safetyScore: 100, onTimeStarts: 100 })
                     };
                 }) : [];
 
@@ -446,7 +458,7 @@
                     },
                     isMonthly: false
                 };
-            }, [incidents, complaints, selectedWeek, selectedPlant, viewMode, selectedMonth]);
+            }, [incidents, complaints, dailyKpis, selectedWeek, selectedPlant, viewMode, selectedMonth]);
 
             const handleDelete = async (coll, id) => { if(confirm("¿Eliminar registro permanentemente?")) { await db.collection(coll).doc(id).delete(); showNotification('success', 'Eliminado'); }};
 
@@ -689,6 +701,47 @@
                                 </div>
                             </div>
 
+                            {/* TABLA DE INDICADORES DIARIOS - SOLO ADMIN */}
+                            {isAdmin && (() => {
+                                const periodDates = dashboardData.current.dates || [];
+                                const rows = dailyKpis.filter(k => periodDates.includes(k.date) && (selectedPlant === 'Todas' || k.plant === selectedPlant))
+                                    .sort((a, b) => periodDates.indexOf(a.date) - periodDates.indexOf(b.date));
+                                return (
+                                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden fade-in">
+                                        <div className="p-4 bg-slate-50 font-bold border-b flex justify-between items-center"><span className="flex gap-2 items-center"><span className="text-emerald-500"><Icons.Activity /></span> Indicadores Diarios (Admin)</span> <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">{rows.length} de {periodDates.length} días</span></div>
+                                        <div className="max-h-60 overflow-y-auto">
+                                            <table className="w-full text-sm text-left">
+                                                <thead className="sticky top-0 bg-slate-50 text-slate-500 shadow-sm z-10">
+                                                    <tr>
+                                                        <th className="p-3">Fecha</th><th className="p-3">Planta</th>
+                                                        <th className="p-3 text-center bg-emerald-50 text-emerald-600">N.S.</th>
+                                                        <th className="p-3 text-center bg-blue-50 text-blue-600">Seg%</th>
+                                                        <th className="p-3 text-center bg-cyan-50 text-cyan-600">A Tiempo%</th>
+                                                        <th className="p-3"></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y">
+                                                    {rows.length === 0 && <tr><td colSpan="6" className="p-6 text-center text-slate-400 text-xs">Sin indicadores capturados en este periodo.</td></tr>}
+                                                    {rows.map(k => (
+                                                        <tr key={k.id} className="hover:bg-slate-50">
+                                                            <td className="p-3 text-slate-600 font-medium">{k.date.slice(0,5)}</td>
+                                                            <td className="p-3 font-bold text-slate-700">{k.plant}</td>
+                                                            <td className="p-3 text-center"><span className={`font-bold ${k.serviceLevel >= 98 ? 'text-emerald-600' : 'text-red-600'}`}>{k.serviceLevel}%</span></td>
+                                                            <td className="p-3 text-center font-bold text-blue-600 bg-blue-50/30">{k.safetyScore}%</td>
+                                                            <td className="p-3 text-center font-bold text-cyan-600 bg-cyan-50/30">{k.onTimeStarts}%</td>
+                                                            <td className="p-3 text-right min-w-[80px]">
+                                                                <button onClick={() => handleEdit(k, 'kpi')} className="text-blue-400 hover:text-blue-600 mr-2" title="Editar"><Icons.Edit /></button>
+                                                                <button onClick={() => handleDelete('daily_kpis', k.id)} className="text-slate-300 hover:text-red-500" title="Eliminar"><Icons.Trash2 /></button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             {/* TABLA DE REPORTES (ABAJO Y ANCHO COMPLETO) - SOLO VISIBLE PARA ADMIN */}
                             {isAdmin && (
                                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden fade-in">
@@ -700,9 +753,6 @@
                                                     <th className="p-3">Fecha</th>
                                                     <th className="p-3">Planta</th>
                                                     <th className="p-3 text-center">Fallas</th>
-                                                    <th className="p-3 text-center">N.S.</th>
-                                                    <th className="p-3 text-center bg-blue-50 text-blue-600">Seg%</th>
-                                                    <th className="p-3 text-center bg-cyan-50 text-cyan-600">A Tiempo%</th>
                                                     <th className="p-3 text-center bg-amber-50 text-amber-600">I.T. c/Af.</th>
                                                     <th className="p-3 text-center bg-amber-50 text-amber-400">I.T. s/Af.</th>
                                                     <th className="p-3 text-center bg-orange-50 text-orange-600">Perc.</th>
@@ -715,9 +765,6 @@
                                                         <td className="p-3 text-slate-600 font-medium">{inc.date.slice(0,5)}</td>
                                                         <td className="p-3"><div className="font-bold text-slate-700">{inc.plant}</div><div className="text-xs text-slate-400">{inc.shift}</div></td>
                                                         <td className="p-3 text-center"><span className="font-bold text-red-700">{inc.imp}</span> / <span className="text-slate-600 font-bold">{inc.noImp}</span></td>
-                                                        <td className="p-3 text-center"><span className={`font-bold ${inc.serviceLevel >= 98 ? 'text-emerald-600' : 'text-red-600'}`}>{inc.serviceLevel}%</span></td>
-                                                        <td className="p-3 text-center font-bold text-blue-600 bg-blue-50/30">{inc.safetyScore || 100}%</td>
-                                                        <td className="p-3 text-center font-bold text-cyan-600 bg-cyan-50/30">{inc.onTimeStarts !== undefined ? inc.onTimeStarts : 100}%</td>
                                                         <td className="p-3 text-center font-bold text-amber-600 bg-amber-50/30">{inc.lateStarts || 0}</td>
                                                         <td className="p-3 text-center font-bold text-amber-400 bg-amber-50/20">{inc.lateStartsNoAff || 0}</td>
                                                         <td className="p-3 text-center font-bold text-orange-600 bg-orange-50/30">{inc.accidents || 0}</td>
@@ -764,9 +811,6 @@
                                     imp, noImp, 
                                     lateStarts: parseInt(data.lateStarts)||0,
                                     lateStartsNoAff: parseInt(data.lateStartsNoAff)||0,
-                                    serviceLevel: parseFloat(data.serviceLevel)||100, 
-                                    safetyScore: parseFloat(data.safetyScore)||100,
-                                    onTimeStarts: parseFloat(data.onTimeStarts)||100,
                                     accidents: parseInt(data.accidents)||0,
                                     
                                     causeImpSleep: parseInt(data.causeImpSleep)||0, causeImpAccident: parseInt(data.causeImpAccident)||0, causeImpRoute: parseInt(data.causeImpRoute)||0, causeImpMech: parseInt(data.causeImpMech)||0,
@@ -784,6 +828,23 @@
                                     showNotification('success', 'Guardado');
                                 }
                                 setIsModalOpen(false); 
+                            }}
+                            dailyKpis={dailyKpis}
+                            onSaveKpi={async (data) => {
+                                const [y, m, d] = data.date.split('-');
+                                const id = `${data.plant}_${data.date}`;
+                                const payload = {
+                                    date: `${d}/${m}/${y.slice(-2)}`, plant: data.plant,
+                                    serviceLevel: isNaN(parseFloat(data.kpiServiceLevel)) ? 100 : parseFloat(data.kpiServiceLevel),
+                                    safetyScore: isNaN(parseFloat(data.kpiSafetyScore)) ? 100 : parseFloat(data.kpiSafetyScore),
+                                    onTimeStarts: isNaN(parseFloat(data.kpiOnTimeStarts)) ? 100 : parseFloat(data.kpiOnTimeStarts),
+                                    updatedAt: Date.now()
+                                };
+                                await db.collection("daily_kpis").doc(id).set(payload);
+                                // Si se editó y cambió la fecha/planta, quitar el registro anterior
+                                if (editingItem && editingItem.id && editingItem.id !== id && modalTab === 'kpi') await db.collection("daily_kpis").doc(editingItem.id).delete();
+                                showNotification('success', editingItem ? 'Indicadores Actualizados' : 'Indicadores del día guardados');
+                                setIsModalOpen(false);
                             }}
                             onSaveComplaint={(data) => {
                                 const [y, m, d] = data.date.split('-');
@@ -812,7 +873,7 @@
             );
         };
 
-        const ModalForm = ({ close, plants, onSaveIncident, onSaveComplaint, onSeed, initialData, initialTab }) => {
+        const ModalForm = ({ close, plants, onSaveIncident, onSaveComplaint, onSaveKpi, dailyKpis = [], onSeed, initialData, initialTab }) => {
             const [tab, setTab] = useState(initialTab || 'incident'); 
             
             const parseDate = (dStr) => {
@@ -825,9 +886,10 @@
                 date: initialData ? parseDate(initialData.date) : new Date().toISOString().split('T')[0], 
                 plant: initialData?.plant || 'Isrri', 
                 shift: initialData?.shift || 'T1', 
-                serviceLevel: initialData?.serviceLevel !== undefined ? initialData.serviceLevel : 99.0, 
-                safetyScore: initialData?.safetyScore !== undefined ? initialData.safetyScore : 100, 
-                onTimeStarts: initialData?.onTimeStarts !== undefined ? initialData.onTimeStarts : 100, 
+                // Indicadores diarios (pestaña aparte)
+                kpiServiceLevel: initialTab === 'kpi' && initialData ? initialData.serviceLevel : 100,
+                kpiSafetyScore: initialTab === 'kpi' && initialData ? initialData.safetyScore : 100,
+                kpiOnTimeStarts: initialTab === 'kpi' && initialData ? initialData.onTimeStarts : 100,
                 lateStarts: initialData?.lateStarts || 0, 
                 lateStartsNoAff: initialData?.lateStartsNoAff || 0,
                 accidents: initialData?.accidents || 0, 
@@ -851,6 +913,22 @@
             });
 
             const handleChange = (e) => setFormData(p => ({ ...p, [e.target.name]: e.target.value }));
+
+            // En la pestaña de indicadores: si ya existe captura para esa fecha y planta, se precarga para actualizarla
+            const toKey = (iso) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y.slice(-2)}`; };
+            const existingKpi = tab === 'kpi' ? dailyKpis.find(k => k.date === toKey(formData.date) && k.plant === formData.plant) : null;
+            const isEditingOther = existingKpi && initialData && existingKpi.id !== initialData.id;
+            useEffect(() => {
+                if (tab !== 'kpi' || !existingKpi || (initialData && existingKpi.id === initialData.id)) return;
+                setFormData(p => ({ ...p, kpiServiceLevel: existingKpi.serviceLevel, kpiSafetyScore: existingKpi.safetyScore, kpiOnTimeStarts: existingKpi.onTimeStarts }));
+            }, [tab, existingKpi && existingKpi.id]);
+
+            const submit = (e) => {
+                e.preventDefault();
+                if (tab === 'kpi') return onSaveKpi(formData);
+                const { kpiServiceLevel, kpiSafetyScore, kpiOnTimeStarts, ...rest } = formData;
+                tab === 'incident' ? onSaveIncident(rest) : onSaveComplaint(rest);
+            };
             
             return (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -859,16 +937,22 @@
                         <div className="flex border-b">
                             <button onClick={()=>!initialData && setTab('incident')} className={`flex-1 py-3 font-bold ${tab==='incident'?'text-rose-600 border-b-2 border-rose-600':'text-slate-500'} ${initialData && 'cursor-not-allowed opacity-50'}`}>Reporte</button>
                             <button onClick={()=>!initialData && setTab('complaint')} className={`flex-1 py-3 font-bold ${tab==='complaint'?'text-rose-600 border-b-2 border-rose-600':'text-slate-500'} ${initialData && 'cursor-not-allowed opacity-50'}`}>Queja</button>
+                            <button onClick={()=>!initialData && setTab('kpi')} className={`flex-1 py-3 font-bold ${tab==='kpi'?'text-rose-600 border-b-2 border-rose-600':'text-slate-500'} ${initialData && 'cursor-not-allowed opacity-50'}`}>Indicadores del Día</button>
                         </div>
-                        <div className="p-6 overflow-y-auto"><form id="f" onSubmit={(e)=>{e.preventDefault(); tab==='incident'?onSaveIncident(formData):onSaveComplaint(formData)}} className="space-y-4">
+                        <div className="p-6 overflow-y-auto"><form id="f" onSubmit={submit} className="space-y-4">
                             <div className="grid grid-cols-2 gap-4"><div><label className="text-xs font-bold text-slate-500">Fecha</label><input type="date" name="date" required value={formData.date} onChange={handleChange} className="w-full border rounded p-2 text-sm"/></div><div><label className="text-xs font-bold text-slate-500">Planta</label><select name="plant" value={formData.plant} onChange={handleChange} className="w-full border rounded p-2 text-sm">{plants.map(p=><option key={p}>{p}</option>)}</select></div></div>
-                            {tab === 'incident' ? (
+                            {tab === 'kpi' ? (
                                 <>
-                                    <div className="grid grid-cols-3 gap-4 bg-slate-50 p-3 rounded border mb-2">
-                                         <div><label className="text-xs font-bold text-emerald-600">Nivel Servicio %</label><input type="number" step="0.1" name="serviceLevel" value={formData.serviceLevel} onChange={handleChange} className="w-full border rounded p-1 text-sm font-bold text-emerald-600"/></div>
-                                         <div><label className="text-xs font-bold text-blue-600">Score Seguridad %</label><input type="number" step="0.1" name="safetyScore" value={formData.safetyScore} onChange={handleChange} className="w-full border rounded p-1 text-sm font-bold text-blue-600"/></div>
-                                         <div><label className="text-xs font-bold text-cyan-600">Inicios a Tiempo %</label><input type="number" step="0.1" name="onTimeStarts" value={formData.onTimeStarts} onChange={handleChange} className="w-full border rounded p-1 text-sm font-bold text-cyan-600"/></div>
+                                    <p className="text-xs text-slate-500">Se captura <b>una sola vez por día y planta</b>. Si vuelves a guardar el mismo día, se actualiza el registro existente.</p>
+                                    {existingKpi && (!initialData || isEditingOther) && <div className="text-xs bg-amber-50 border border-amber-200 text-amber-700 rounded p-2">Ya hay indicadores capturados para este día; al guardar se actualizarán.</div>}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4"><label className="text-xs font-bold text-emerald-700 flex items-center gap-1 mb-2"><Icons.Activity /> Nivel Servicio %</label><input type="number" step="0.1" min="0" max="100" name="kpiServiceLevel" value={formData.kpiServiceLevel} onChange={handleChange} className="w-full border rounded p-2 text-xl font-bold text-emerald-700 text-center"/></div>
+                                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4"><label className="text-xs font-bold text-blue-700 flex items-center gap-1 mb-2"><Icons.Shield /> Score Seguridad %</label><input type="number" step="0.1" min="0" max="100" name="kpiSafetyScore" value={formData.kpiSafetyScore} onChange={handleChange} className="w-full border rounded p-2 text-xl font-bold text-blue-700 text-center"/></div>
+                                        <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4"><label className="text-xs font-bold text-cyan-700 flex items-center gap-1 mb-2"><Icons.CheckCircle /> Inicios a Tiempo %</label><input type="number" step="0.1" min="0" max="100" name="kpiOnTimeStarts" value={formData.kpiOnTimeStarts} onChange={handleChange} className="w-full border rounded p-2 text-xl font-bold text-cyan-700 text-center"/></div>
                                     </div>
+                                </>
+                            ) : tab === 'incident' ? (
+                                <>
                                     <div className="grid grid-cols-4 gap-2 bg-slate-50 p-3 rounded border">
                                         <div><label className="text-xs font-bold text-slate-500">Turno</label><select name="shift" value={formData.shift} onChange={handleChange} className="w-full border rounded p-1 text-sm"><option>T1</option><option>T2</option><option>T3</option></select></div>
                                         <div><label className="text-xs font-bold text-amber-600">I. Tarde c/Afect.</label><input type="number" name="lateStarts" value={formData.lateStarts} onChange={handleChange} className="w-full border rounded p-1 text-sm"/></div>
