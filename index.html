@@ -75,6 +75,31 @@
             { id: 'Esperando refacciones', color: 'bg-orange-50 text-orange-700 border-orange-200', bar: 'bg-orange-500' },
             { id: 'Terminada', color: 'bg-emerald-50 text-emerald-700 border-emerald-200', bar: 'bg-emerald-500' }
         ];
+        // --- CATÁLOGO DE CAUSAS DE INCIDENCIA (clave del contador -> etiqueta) ---
+        const INCIDENT_CAUSES = [
+            { group: 'Imputable', key: 'causeImpSleep', label: 'Op. Dormido' }, { group: 'Imputable', key: 'causeImpAccident', label: 'Siniestro' },
+            { group: 'Imputable', key: 'causeImpRoute', label: 'Desvío Ruta' }, { group: 'Imputable', key: 'causeImpMech', label: 'Falla Mec.' },
+            { group: 'Imputable', key: 'causeImpSupervisor', label: 'Supervisor' }, { group: 'Imputable', key: 'causeImpAttitude', label: 'Actitud de Op' },
+            { group: 'Imputable', key: 'causeImpDriving', label: 'Mal Manejo' }, { group: 'Imputable', key: 'causeImpFlatTire', label: 'Ponchadura' },
+            { group: 'Imputable', key: 'causeImpAlcohol', label: 'Alcoholemia' }, { group: 'Imputable', key: 'causeImpDiesel', label: 'Diesel' },
+            { group: 'Imputable', key: 'causeImpOpTheme', label: 'Tema de Op.' },
+            { group: 'No imputable', key: 'causeNoImpTraffic', label: 'Tráfico' }, { group: 'No imputable', key: 'causeNoImpClosed', label: 'Calle Cerrada' },
+            { group: 'No imputable', key: 'causeNoImpWeather', label: 'Clima' }, { group: 'No imputable', key: 'causeNoImpCrashNoResp', label: 'Percance S/R' },
+            { group: 'No imputable', key: 'causeNoImpTrain', label: 'Tren' }, { group: 'No imputable', key: 'causeNoImpVandalism', label: 'Vandalismo' },
+            { group: 'No imputable', key: 'causeNoImpOvercapacity', label: 'Sobreaforo' }, { group: 'No imputable', key: 'causeNoImpPublicEvent', label: 'Evento Publico' },
+            { group: 'No imputable', key: 'causeNoImpProtest', label: 'Manifestación' }, { group: 'No imputable', key: 'causeNoImpPublicWork', label: 'Obra Publica' },
+            { group: 'No imputable', key: 'causeNoImpThirdPartyCrash', label: 'Acc. Terceros' }, { group: 'No imputable', key: 'causeNoImpOther', label: 'Otros' },
+            { group: 'Inicio tarde', key: 'lateStarts', label: 'Inicio tarde c/Afect.' }, { group: 'Inicio tarde', key: 'lateStartsNoAff', label: 'Inicio tarde s/Afect.' },
+            { group: 'Percance', key: 'accidents', label: 'Percance' }
+        ];
+        const causeByKey = (k) => INCIDENT_CAUSES.find(c => c.key === k);
+        const GROUP_STYLE = {
+            'Imputable': 'bg-rose-100 text-rose-700 border-rose-200', 'No imputable': 'bg-slate-100 text-slate-600 border-slate-200',
+            'Inicio tarde': 'bg-amber-100 text-amber-700 border-amber-200', 'Percance': 'bg-orange-100 text-orange-700 border-orange-200'
+        };
+        const fmtIso = (iso) => iso ? iso.split('-').reverse().map((v, i) => i === 2 ? v.slice(-2) : v).join('/') : '';
+        const ddmmyyToDate = (s) => { if (!s) return null; const [d, m, y] = s.split('/'); return new Date(2000 + parseInt(y), parseInt(m) - 1, parseInt(d)); };
+
         const statusInfo = (s) => UNIT_STATUSES.find(x => x.id === s) || UNIT_STATUSES[0];
 
         const compressImage = (file, maxSize, quality) => new Promise((resolve, reject) => {
@@ -610,13 +635,81 @@
 
                         {/* --- TABLAS Y GRÁFICAS DE GESTIÓN --- */}
                         <div className="space-y-6">
-                            
+
+                            {/* VISUALIZACIÓN DE INCIDENCIAS */}
+                            {(() => {
+                                const periodDates = dashboardData.current.dates || [];
+                                const rows = [];
+                                (dashboardData.current.incidents || []).forEach(inc => {
+                                    const ar = inc.affectedRoutes || [];
+                                    if (ar.length) ar.forEach((r, i) => rows.push({ id: `${inc.id}_${i}`, inc, date: inc.date, plant: inc.plant, shift: inc.shift, route: r.route, users: parseInt(r.users) || 0, cause: causeByKey(r.cause), note: r.note }));
+                                    else {
+                                        const list = INCIDENT_CAUSES.filter(c => (inc[c.key] || 0) > 0);
+                                        if (list.length) rows.push({ id: inc.id, inc, date: inc.date, plant: inc.plant, shift: inc.shift, route: null, users: null, legacy: list.map(c => `${c.label} (${inc[c.key]})`).join(', '), cause: list[0] });
+                                    }
+                                });
+                                rows.sort((a, b) => periodDates.indexOf(a.date) - periodDates.indexOf(b.date));
+                                const detailed = rows.filter(r => r.route);
+                                const totalUsers = detailed.reduce((a, r) => a + r.users, 0);
+                                const byRoute = Object.values(detailed.reduce((acc, r) => { const k = r.route.trim().toUpperCase(); acc[k] = acc[k] || { route: r.route, n: 0, users: 0 }; acc[k].n++; acc[k].users += r.users; return acc; }, {})).sort((a, b) => b.n - a.n || b.users - a.users);
+                                const maxN = byRoute.length ? byRoute[0].n : 1;
+                                return (
+                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                            <div className="p-4 bg-slate-50 font-bold border-b flex justify-between items-center flex-wrap gap-2">
+                                                <span className="flex gap-2 items-center"><span className="text-rose-500"><Icons.AlertTriangle /></span> Incidencias</span>
+                                                <span className="flex gap-2 items-center">
+                                                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full">{new Set(detailed.map(r => r.route.trim().toUpperCase())).size} rutas</span>
+                                                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{totalUsers} usuarios afectados</span>
+                                                    <span className="text-xs bg-rose-100 text-rose-700 px-2 py-1 rounded-full">{detailed.length}</span>
+                                                </span>
+                                            </div>
+                                            <div className="max-h-60 overflow-y-auto">
+                                                <table className="w-full text-sm text-left">
+                                                    <thead className="sticky top-0 bg-slate-50 text-slate-500"><tr><th className="p-3">Fecha</th><th className="p-3">Turno</th><th className="p-3">Ruta</th><th className="p-3 text-center">Usuarios</th><th className="p-3">Causa / Detalle</th>{isAdmin && <th></th>}</tr></thead>
+                                                    <tbody className="divide-y">
+                                                        {rows.length === 0 && <tr><td colSpan="6" className="p-6 text-center text-slate-400 text-xs">Sin incidencias en este periodo.</td></tr>}
+                                                        {rows.map(r => (
+                                                            <tr key={r.id} className="hover:bg-slate-50">
+                                                                <td className="p-3 text-slate-500 align-top">{r.date.slice(0,5)}</td>
+                                                                <td className="p-3 align-top text-xs text-slate-500">{r.shift}</td>
+                                                                <td className="p-3 align-top font-bold text-slate-700">{r.route || <span className="text-xs font-normal text-slate-400 italic">Sin ruta capturada</span>}</td>
+                                                                <td className="p-3 align-top text-center font-bold text-blue-700">{r.users !== null ? r.users : '-'}</td>
+                                                                <td className="p-3 align-top">
+                                                                    {r.cause && <span className={`text-[11px] border px-2 py-0.5 rounded-full font-bold ${GROUP_STYLE[r.cause.group]}`}>{r.legacy ? r.cause.group : r.cause.label}</span>}
+                                                                    {r.legacy && <div className="text-xs text-slate-500 mt-1">{r.legacy}</div>}
+                                                                    {r.note && <div className="text-xs text-slate-500 mt-1 italic">"{r.note}"</div>}
+                                                                </td>
+                                                                {isAdmin && <td className="p-3 align-top text-right"><button onClick={() => handleEdit(r.inc, 'incident')} className="text-blue-400 hover:text-blue-600" title="Editar reporte"><Icons.Edit /></button></td>}
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                                            <h3 className="font-bold mb-4 text-sm flex gap-2 items-center"><span className="text-rose-500"><Icons.AlertTriangle /></span> Rutas más afectadas</h3>
+                                            {byRoute.length === 0 ? <div className="text-xs text-slate-400 text-center py-8">Sin rutas capturadas en este periodo.</div> : (
+                                                <div className="space-y-3 max-h-56 overflow-y-auto pr-1">
+                                                    {byRoute.slice(0, 8).map(r => (
+                                                        <div key={r.route}>
+                                                            <div className="flex justify-between text-xs mb-1"><span className="font-bold text-slate-700">{r.route}</span><span className="text-slate-500">{r.n} inc. · {r.users} usuarios</span></div>
+                                                            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-rose-500 rounded-full" style={{ width: `${(r.n / maxN) * 100}%` }}></div></div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                 <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                                    <div className="p-4 bg-slate-50 font-bold border-b flex justify-between"><span className="flex gap-2 items-center"><span className="text-purple-500"><Icons.MessageSquare /></span> Quejas</span> <span className="flex gap-2 items-center">{(() => { const r = (dashboardData.current.complaints || []).filter(c => c.recurrent === 'Sí').length; return r > 0 ? <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full flex items-center gap-1"><Icons.Repeat /> {r} reincidente{r !== 1 ? 's' : ''}</span> : null; })()}<span className="text-xs bg-purple-100 px-2 py-1 rounded-full">{dashboardData.current.complaints ? dashboardData.current.complaints.length : 0}</span></span></div>
+                                    <div className="p-4 bg-slate-50 font-bold border-b flex justify-between"><span className="flex gap-2 items-center"><span className="text-purple-500"><Icons.MessageSquare /></span> Quejas</span> <span className="flex gap-2 items-center">{(() => { const r = (dashboardData.current.complaints || []).filter(c => c.recurrent === 'Sí').length; return r > 0 ? <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full flex items-center gap-1"><Icons.Repeat /> {r} reincidente{r !== 1 ? 's' : ''}</span> : null; })()}{(() => { const o = (dashboardData.current.complaints || []).filter(c => !c.closeDate).length; return o > 0 ? <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full">{o} abierta{o !== 1 ? 's' : ''}</span> : null; })()}<span className="text-xs bg-purple-100 px-2 py-1 rounded-full">{dashboardData.current.complaints ? dashboardData.current.complaints.length : 0}</span></span></div>
                                     <div className="max-h-60 overflow-y-auto">
                                         <table className="w-full text-sm text-left">
-                                            <thead className="sticky top-0 bg-slate-50 text-slate-500"><tr><th className="p-3">Fecha</th><th className="p-3">Ruta</th><th className="p-3">Motivo / Detalle</th><th className="p-3 text-center">Reincidente</th><th className="p-3">Acción</th>{isAdmin && <th></th>}</tr></thead>
+                                            <thead className="sticky top-0 bg-slate-50 text-slate-500"><tr><th className="p-3">Fecha</th><th className="p-3">Ruta</th><th className="p-3">Motivo / Detalle</th><th className="p-3 text-center">Reincidente</th><th className="p-3">Acción</th><th className="p-3 text-center">Cierre</th>{isAdmin && <th></th>}</tr></thead>
                                             <tbody className="divide-y">
                                                 {dashboardData.current.complaints && dashboardData.current.complaints.map(c => (
                                                     <tr key={c.id}>
@@ -625,6 +718,7 @@
                                                         <td className="p-3 align-top"><div className="text-slate-800 font-bold">{c.issue}</div><div className="text-xs text-slate-500 mt-1 italic">"{c.detail}"</div></td>
                                                         <td className="p-3 align-top text-center">{c.recurrent === 'Sí' ? <span className="inline-flex items-center gap-1 text-xs font-bold bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full"><Icons.Repeat /> Sí</span> : <span className="text-xs text-slate-400">No</span>}</td>
                                                         <td className="p-3 align-top text-xs"><span className="bg-slate-100 px-2 py-1 rounded border border-slate-200">{c.action || '-'}</span></td>
+                                                        <td className="p-3 align-top text-center text-xs whitespace-nowrap">{c.closeDate ? (() => { const o = ddmmyyToDate(c.date), cl = new Date(c.closeDate + 'T00:00:00'); const days = o ? Math.max(0, Math.round((cl - o) / 86400000)) : null; return <><div className="font-bold text-emerald-700">{fmtIso(c.closeDate)}</div>{days !== null && <div className="text-[10px] text-slate-400">{days} día{days !== 1 ? 's' : ''}</div>}</>; })() : <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-bold">Abierta</span>}</td>
                                                         {isAdmin && <td className="p-3 align-top text-right min-w-[80px]">
                                                             <button onClick={() => handleEdit(c, 'complaint')} className="text-blue-400 hover:text-blue-600 mr-2" title="Editar"><Icons.Edit /></button>
                                                             <button onClick={()=>handleDelete('complaints', c.id)} className="text-red-300 hover:text-red-500" title="Eliminar"><Icons.Trash2 /></button>
@@ -812,6 +906,7 @@
                                     lateStarts: parseInt(data.lateStarts)||0,
                                     lateStartsNoAff: parseInt(data.lateStartsNoAff)||0,
                                     accidents: parseInt(data.accidents)||0,
+                                    affectedRoutes: (data.affectedRoutes || []).filter(r => (r.route || '').trim()).map(r => ({ route: r.route.trim(), users: parseInt(r.users) || 0, cause: r.cause, note: (r.note || '').trim() })),
                                     
                                     causeImpSleep: parseInt(data.causeImpSleep)||0, causeImpAccident: parseInt(data.causeImpAccident)||0, causeImpRoute: parseInt(data.causeImpRoute)||0, causeImpMech: parseInt(data.causeImpMech)||0,
                                     causeImpSupervisor: parseInt(data.causeImpSupervisor)||0, causeImpAttitude: parseInt(data.causeImpAttitude)||0, causeImpDriving: parseInt(data.causeImpDriving)||0, causeImpFlatTire: parseInt(data.causeImpFlatTire)||0, causeImpAlcohol: parseInt(data.causeImpAlcohol)||0, causeImpDiesel: parseInt(data.causeImpDiesel)||0, causeImpOpTheme: parseInt(data.causeImpOpTheme)||0,
@@ -848,7 +943,8 @@
                             }}
                             onSaveComplaint={(data) => {
                                 const [y, m, d] = data.date.split('-');
-                                const payload = { ...data, date: `${d}/${m}/${y.slice(-2)}` };
+                                const { affectedRoutes, ...cData } = data;
+                                const payload = { ...cData, date: `${d}/${m}/${y.slice(-2)}`, closeDate: data.closeDate || '' };
                                 
                                 if (editingItem) {
                                      db.collection("complaints").doc(editingItem.id).update(payload);
@@ -893,6 +989,7 @@
                 lateStarts: initialData?.lateStarts || 0, 
                 lateStartsNoAff: initialData?.lateStartsNoAff || 0,
                 accidents: initialData?.accidents || 0, 
+                affectedRoutes: initialData?.affectedRoutes ? initialData.affectedRoutes.map(r => ({ ...r })) : [],
                 
                 // Imputables
                 causeImpSleep: initialData?.causeImpSleep || 0, causeImpAccident: initialData?.causeImpAccident || 0, causeImpRoute: initialData?.causeImpRoute || 0, causeImpMech: initialData?.causeImpMech || 0, 
@@ -909,8 +1006,12 @@
                 action: initialData?.action || '', 
                 source: initialData?.source || 'Laborales', 
                 type: initialData?.type || 'Servicio',
-                recurrent: initialData?.recurrent || 'No'
+                recurrent: initialData?.recurrent || 'No',
+                closeDate: initialData?.closeDate || ''
             });
+            const setRoute = (i, field, val) => setFormData(p => ({ ...p, affectedRoutes: p.affectedRoutes.map((r, j) => j === i ? { ...r, [field]: val } : r) }));
+            const addRoute = () => setFormData(p => ({ ...p, affectedRoutes: [...p.affectedRoutes, { route: '', users: '', cause: 'causeImpMech', note: '' }] }));
+            const delRoute = (i) => setFormData(p => ({ ...p, affectedRoutes: p.affectedRoutes.filter((_, j) => j !== i) }));
 
             const handleChange = (e) => setFormData(p => ({ ...p, [e.target.name]: e.target.value }));
 
@@ -994,6 +1095,40 @@
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* RUTAS AFECTADAS */}
+                                    <div className="border border-blue-100 bg-blue-50/40 rounded p-3 mt-2">
+                                        <div className="flex justify-between items-center mb-2 border-b border-blue-200 pb-1">
+                                            <h4 className="text-sm font-bold text-blue-700">Rutas afectadas <span className="text-xs font-normal text-slate-500">— una fila por incidencia</span></h4>
+                                            <button type="button" onClick={addRoute} className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded flex items-center gap-1"><Icons.Plus /> Agregar ruta</button>
+                                        </div>
+                                        {formData.affectedRoutes.length === 0 ? <div className="text-xs text-slate-400 text-center py-3">Sin rutas capturadas. Usa "Agregar ruta" para registrar cada incidencia con su ruta y usuarios a bordo.</div> : (
+                                            <div className="space-y-2">
+                                                <div className="hidden md:grid grid-cols-12 gap-2 text-[11px] font-bold text-slate-500 px-1"><div className="col-span-3">Ruta</div><div className="col-span-2 text-center">Usuarios a bordo</div><div className="col-span-3">Causa</div><div className="col-span-3">Nota</div><div></div></div>
+                                                {formData.affectedRoutes.map((r, i) => (
+                                                    <div key={i} className="grid grid-cols-12 gap-2 items-center bg-white border rounded p-2">
+                                                        <input value={r.route} onChange={e => setRoute(i, 'route', e.target.value)} required placeholder="Ej. R-12" className="col-span-6 md:col-span-3 border rounded p-1 text-sm font-bold" />
+                                                        <input type="number" min="0" value={r.users} onChange={e => setRoute(i, 'users', e.target.value)} placeholder="0" className="col-span-6 md:col-span-2 border rounded p-1 text-sm text-center font-bold text-blue-700" />
+                                                        <select value={r.cause} onChange={e => setRoute(i, 'cause', e.target.value)} className="col-span-12 md:col-span-3 border rounded p-1 text-xs">
+                                                            {['Imputable', 'No imputable', 'Inicio tarde', 'Percance'].map(g => <optgroup key={g} label={g}>{INCIDENT_CAUSES.filter(c => c.group === g).map(c => <option key={c.key} value={c.key}>{c.label}</option>)}</optgroup>)}
+                                                        </select>
+                                                        <input value={r.note || ''} onChange={e => setRoute(i, 'note', e.target.value)} placeholder="Detalle (opcional)" className="col-span-10 md:col-span-3 border rounded p-1 text-xs" />
+                                                        <button type="button" onClick={() => delRoute(i)} className="col-span-2 md:col-span-1 text-red-400 hover:text-red-600 flex justify-center" title="Quitar"><span className="scale-75"><Icons.Trash2 /></span></button>
+                                                    </div>
+                                                ))}
+                                                {(() => {
+                                                    const counts = {}; formData.affectedRoutes.forEach(r => { counts[r.cause] = (counts[r.cause] || 0) + 1; });
+                                                    const diff = Object.entries(counts).filter(([k, n]) => (parseInt(formData[k]) || 0) < n);
+                                                    return diff.length > 0 && (
+                                                        <div className="text-xs bg-amber-50 border border-amber-200 text-amber-700 rounded p-2 flex justify-between items-center gap-2 flex-wrap">
+                                                            <span>Hay más rutas que el contador en: {diff.map(([k]) => causeByKey(k)?.label).join(', ')}.</span>
+                                                            <button type="button" onClick={() => setFormData(p => { const n = { ...p }; diff.forEach(([k, v]) => { n[k] = v; }); return n; })} className="bg-amber-600 text-white px-2 py-1 rounded font-bold">Ajustar contadores</button>
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </div>
+                                        )}
+                                    </div>
                                 </>
                             ) : (
                                 <>
@@ -1017,7 +1152,10 @@
                                             ))}
                                         </div>
                                     </div>
-                                    <div><label className="text-xs font-bold text-slate-500">Acción Tomada</label><input type="text" name="action" placeholder="Ej. Acta administrativa, Compromiso..." value={formData.action} onChange={handleChange} className="w-full border rounded p-2 text-sm"/></div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="md:col-span-2"><label className="text-xs font-bold text-slate-500">Acción Tomada</label><input type="text" name="action" placeholder="Ej. Acta administrativa, Compromiso..." value={formData.action} onChange={handleChange} className="w-full border rounded p-2 text-sm"/></div>
+                                        <div><label className="text-xs font-bold text-slate-500">Fecha de cierre <span className="font-normal text-slate-400">(vacío = abierta)</span></label><div className="flex gap-1"><input type="date" name="closeDate" min={formData.date} value={formData.closeDate} onChange={handleChange} className="w-full border rounded p-2 text-sm"/>{formData.closeDate && <button type="button" onClick={() => setFormData(p => ({ ...p, closeDate: '' }))} className="px-2 text-slate-400 hover:text-red-500" title="Quitar"><Icons.X /></button>}</div></div>
+                                    </div>
                                     <textarea name="detail" placeholder="Detalle de la queja..." rows="3" value={formData.detail} onChange={handleChange} className="w-full border rounded p-2 text-sm"></textarea>
                                 </>
                             )}
